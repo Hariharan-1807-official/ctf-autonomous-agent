@@ -1,6 +1,7 @@
 from configs.settings import settings
 from utils.logger import logger
 from core.state import AgentState
+from tools.tool_registry import ToolRegistry
 
 
 class Controller:
@@ -9,33 +10,22 @@ class Controller:
 
         self.state = state
         self.runner = runner
+        self.tools = ToolRegistry(runner)
 
     def run(self):
 
         logger.info("\nController started")
 
-        try:
+        while self.state.step < settings.max_steps:
 
-            while self.state.step < settings.max_steps:
+            logger.info(f"\nStep {self.state.step}")
 
-                logger.info(f"\nStep: {self.state.step}")
+            tool = self.tools.get("list_directory")
 
-                action = f"ls -la {self.state.cwd}"
+            output = tool.run(self.state.cwd)
 
-                output = self.runner.run(action)
+            self.state.add_observation(output)
 
-                self.state.add_observation(output)
+            self.state.increment_step()
 
-                self.state.increment_step()
-
-        except KeyboardInterrupt:
-
-            logger.info("Execution interrupted")
-
-        except Exception as e:
-
-            logger.error(f"Controller crashed: {e}")
-
-        finally:
-
-            logger.info("Controller finished execution")
+        logger.info("Controller finished execution")
