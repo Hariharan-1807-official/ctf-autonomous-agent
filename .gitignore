@@ -1,11 +1,12 @@
-# Python
+# Python bytecode
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
 
-# Virtual environment
+# Virtual environments
 venv/
+.venv/
+env/
 
 # Environment variables
 .env
@@ -13,17 +14,21 @@ venv/
 # Logs
 *.log
 
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build / packaging
+build/
+dist/
+*.egg
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+
 # OS files
 .DS_Store
 Thumbs.db
-
-# VS Code
-.vscode/
-
-# Testing
-.pytest_cache/
-
-# Build files
-build/
-dist/
-*.egg-info/
