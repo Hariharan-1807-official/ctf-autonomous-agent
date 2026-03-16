@@ -1,42 +1,41 @@
+from configs.settings import settings
 from utils.logger import logger
 from core.state import AgentState
-from configs.settings import settings
 
 
 class Controller:
 
-    def __init__(self):
-        self.state = AgentState()
+    def __init__(self, state: AgentState, runner):
+
+        self.state = state
+        self.runner = runner
 
     def run(self):
+
+        logger.info("\nController started")
+
         try:
-            logger.info("Controller started")
 
-            while not self.state.flag_found and self.state.step < settings.max_steps:
+            while self.state.step < settings.max_steps:
 
-                logger.info(f"Step {self.state.step}")
+                logger.info(f"\nStep: {self.state.step}")
 
-                # Placeholder action (Phase-0 simulation)
-                action = "ls"
+                action = f"ls -la {self.state.cwd}"
 
-                logger.info(f"Executing action: {action}")
+                output = self.runner.run(action)
 
-                self.state.add_history(action)
-
-                # Simulated output
-                output = "file1 file2 file3"
-                self.state.last_output = output
                 self.state.add_observation(output)
-
-                logger.info(f"Output: {output}")
 
                 self.state.increment_step()
 
         except KeyboardInterrupt:
-            logger.info("Execution stopped by user")
+
+            logger.info("Execution interrupted")
 
         except Exception as e:
-            logger.error(f"System crash: {e}")
+
+            logger.error(f"Controller crashed: {e}")
 
         finally:
+
             logger.info("Controller finished execution")

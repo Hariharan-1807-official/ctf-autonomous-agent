@@ -1,26 +1,16 @@
 import logging
-import sys
+from rich.logging import RichHandler
 
 
-def setup_logger(name: str = "ctf-agent"):
-    logger = logging.getLogger(name)
+def get_logger():
 
-    if logger.handlers:
-        return logger
-
-    logger.setLevel(logging.DEBUG)
-
-    formatter = logging.Formatter(
-        "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s",
-        "%Y-%m-%d %H:%M:%S",
+    logging.basicConfig(
+        level="INFO",
+        format="%(message)s",
+        handlers=[RichHandler()]
     )
 
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(formatter)
-
-    logger.addHandler(console_handler)
-
-    return logger
+    return logging.getLogger("ctf-agent")
 
 
-logger = setup_logger()
+logger = get_logger()
