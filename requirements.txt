@@ -1,3 +1,4 @@
-rich
 paramiko
+rich
+python-dotenv
 pydantic
