@@ -5,100 +5,93 @@ from utils.logger import logger
 
 
 class LLMEngine:
-
-    def __init__(self, tool_registry):
-
+    def __init__(self, tools):
         api_key = os.getenv("GROQ_API_KEY")
+
         if not api_key:
-            raise ValueError("GROQ_API_KEY environment variable is not set")
+            raise ValueError("❌ GROQ_API_KEY not found")
 
-
-        # ✅ Groq API (FAST + FREE TIER)
         self.client = OpenAI(
             api_key=api_key,
             base_url="https://api.groq.com/openai/v1"
         )
 
-        self.tools = tool_registry
-
-    def _build_tools_prompt(self):
-
-        tool_descriptions = []
-
-        for name, tool in self.tools.tools.items():
-            tool_descriptions.append(f"{name}: {tool.description}")
-
-        return "\n".join(tool_descriptions)
+        self.tools = tools
 
     def decide(self, state, memory_context: str):
+        # ✅ Extract passwords (core Phase-4 feature)
+        passwords = re.findall(r"[A-Za-z0-9]{32}", memory_context)
+        if passwords:
+            logger.info(f"🔑 Passwords found: {passwords[0]}")
+            return None, None  # Signal mission complete
 
-        tools_prompt = self._build_tools_prompt()
+        tools_list = "\n".join([
+            f"{name}: {tool.description}"
+            for name, tool in self.tools.tools.items()
+        ])
 
         prompt = f"""
-You are an autonomous CTF agent.
+🎯 MISSION: Extract bandit0 password from home/bandit0/readme
 
-GOAL:
-Find either:
-- flag{{...}}
-- OR Bandit passwords
+CURRENT PATH: {state.cwd}
 
-CURRENT STATE:
-Step: {state.step}
-Directory: {state.cwd}
+CRITICAL PATHS (relative from current dir):
+1. list_directory bandit0    (if in /home)
+2. read_file readme          (if in home/bandit0) 
+3. 32-char password → MISSION_COMPLETE
+
+FOUND PASSWORDS: {', '.join(passwords) if passwords else 'None'}
 
 RECENT OBSERVATIONS:
-{memory_context[-1000:] if memory_context else "None"}
+{state.observations[-2:]}
 
-MISSION LOGIC:
-- If you find a password → STOP
-- If no new useful info → STOP
-- Avoid repeating same action
-- Prefer new exploration
+RULES:
+- Use RELATIVE PATHS from current directory
+- From /home → list_directory bandit0
+- From home/bandit0 → read_file readme
+- NEVER use absolute paths
 
-AVAILABLE TOOLS:
-{tools_prompt}
+TOOLS:
+{tools_list}
 
-Respond in ONE format ONLY:
+FORMAT:
+TOOL: list_directory
+ARGS: bandit0
 
-1. Continue:
-TOOL: tool_name
-ARGS: argument
+OR
+TOOL: read_file  
+ARGS: readme
 
-2. Finish:
+OR
 MISSION_COMPLETE
 """
 
-        try:
 
+        try:
             response = self.client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.2
+                messages=[{"role": "user", "content": prompt}]
             )
 
             text = response.choices[0].message.content
 
-            logger.info(f"\nLLM OUTPUT:\n{text}")
-
-            # ✅ TERMINATION CHECK
-            if re.search(r"MISSION_COMPLETE", text, re.IGNORECASE):
+            # ✅ TERMINATION FIRST (IMPORTANT)
+            if "MISSION_COMPLETE" in text.upper():
                 logger.info("🎯 MISSION COMPLETE DETECTED")
                 return None, None
 
-            # ✅ TOOL PARSING
+            # ✅ Robust parsing
             tool_match = re.search(r"TOOL:\s*(\w+)", text, re.IGNORECASE)
             arg_match = re.search(r"ARGS:\s*(.+)", text, re.IGNORECASE)
 
-            if not tool_match:
-                logger.error("Invalid LLM output → fallback")
-                return "list_directory", "."
+            if tool_match:
+                tool = tool_match.group(1).strip()
+                arg = arg_match.group(1).strip() if arg_match else "."
+                return tool, arg
 
-            tool = tool_match.group(1)
-            arg = arg_match.group(1).strip() if arg_match else "."
-
-            return tool, arg
+            # ✅ Fallback
+            return "list_directory", "."
 
         except Exception as e:
-
-            logger.error(f"LLM error: {e}")
+            logger.error(f"LLM Error: {e}")
             return "list_directory", "."
