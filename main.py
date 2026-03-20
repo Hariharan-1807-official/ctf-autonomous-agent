@@ -1,26 +1,36 @@
+from dotenv import load_dotenv
+import os
+
+load_dotenv(dotenv_path=os.path.join(os.getcwd(), ".env"))
+from utils.logger import logger
 from core.state import AgentState
 from core.controller import Controller
-from execution.ssh_client import SSHClient
 from execution.command_runner import CommandRunner
-from utils.logger import logger
+from execution.ssh_client import SSHClient
 
 
 def main():
 
-    logger.info("\nStarting CTF Autonomous Agent\n")
+    logger.info("Starting CTF Autonomous Agent")
 
     state = AgentState()
 
-    ssh = SSHClient()
-    ssh.connect()
+    # ✅ Create SSH client
+    ssh_client = SSHClient()
 
-    runner = CommandRunner(ssh)
+    # ✅ Connect once (persistent connection)
+    ssh_client.connect()
+
+    # ✅ Inject into runner
+    runner = CommandRunner(ssh_client)
 
     controller = Controller(state, runner)
 
-    controller.run()
-
-    ssh.close()
+    try:
+        controller.run()
+    finally:
+        # ✅ Always close connection
+        ssh_client.close()
 
 
 if __name__ == "__main__":
