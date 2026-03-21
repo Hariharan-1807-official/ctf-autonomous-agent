@@ -20,47 +20,44 @@ class LLMEngine:
         passwords = re.findall(r"[A-Za-z0-9]{32}", memory_context)
 
         tools_list = "\n".join([
-            f"{name}: {tool.description}"
+            f"- {name}: {tool.description}"
             for name, tool in self.tools.tools.items()
         ])
 
         prompt = f"""
-You are solving Bandit Level {state.current_level} on OverTheWire.
+You are an autonomous Linux CTF agent solving OverTheWire Bandit challenges.
 
 CURRENT LEVEL: bandit{state.current_level}
 CURRENT DIRECTORY: {state.cwd}
 
-DIRECTORY CONTENTS (initial scan):
-{state.observations[0] if state.observations else "Unknown"}
+INITIAL DIRECTORY SCAN:
+{state.observations[0] if state.observations else "Not yet scanned"}
 
-RECENT ACTIONS AND RESULTS:
+RECENT ACTIONS AND OUTPUTS:
 {memory_context}
 
-FOUND PASSWORDS SO FAR: {passwords if passwords else "None"}
-
-BANDIT-SPECIFIC KNOWLEDGE:
-- Level 0: password is in "readme"
-- Level 1: password is in file named "-" → use read_file with arg "-"
-- Level 2: password is in file with spaces → pass full filename including spaces
-- Level 3: password is in hidden file inside "inhere/" directory → use read_file inhere/...Hiding-From-You
-- Files named "-" are handled automatically with ./ prefix
-- If you see a file inside a subdirectory, pass the FULL PATH like: inhere/filename
-
-STRICT RULES:
-- After listing a directory and seeing a file → immediately read that file
-- Pass the FULL PATH to read_file including subdirectory e.g. inhere/...Hiding-From-You
-- If you already found a 32-char password → MISSION_COMPLETE
-- Do NOT repeat the same action twice
+FOUND PASSWORDS: {passwords if passwords else "None yet"}
 
 AVAILABLE TOOLS:
 {tools_list}
+
+GENERAL STRATEGY:
+- Observe what files and directories exist
+- If you see a directory → explore it
+- If you see files → determine which ones might contain a password
+- If there are many files of unknown type → use check_file_type to identify the readable one
+- If a file contains a 32-character alphanumeric string → that is the password
+- Use the full path when reading files inside subdirectories e.g. inhere/filename
+- Files with special names like "-" or names starting with "--" are handled automatically
+- Never repeat an action you already performed
+- If you have already found a 32-character password → respond MISSION_COMPLETE
 
 Respond in ONE format only:
 
 TOOL: tool_name
 ARGS: argument
 
-OR if password already found:
+OR:
 
 MISSION_COMPLETE
 """

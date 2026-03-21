@@ -14,6 +14,36 @@ class Controller:
         self.tools = ToolRegistry(runner)
         self.llm = LLMEngine(self.tools)
 
+    def _extract_ascii_file(self, file_type_output: str):
+        for line in file_type_output.splitlines():
+            if "ASCII text" in line:
+                path = line.split(":")[0].strip()
+                return path
+        return None
+
+    def _try_read_password(self, path: str):
+        """Try to read a file and return password if found."""
+        read_tool = self.tools.get("read_file")
+        output = read_tool.run(path)
+        logger.info(f"Output:\n{output}")
+        self.state.add_action(f"read_file {path}")
+        self.state.add_observation(output)
+        self.state.increment_step()
+        match = PASSWORD_PATTERN.search(output)
+        if match:
+            return match.group(0)
+        return None
+
+    def _get_parent_dir(self, find_output: str):
+        """Extract the parent directory from find output."""
+        lines = [l.strip() for l in find_output.splitlines() if l.strip()]
+        if lines:
+            # e.g. inhere/-file02 → inhere
+            parts = lines[0].split("/")
+            if len(parts) > 1:
+                return "/".join(parts[:-1])
+        return "."
+
     def solve_level(self):
         logger.info(f"\n{'='*50}")
         logger.info(f"🎯 SOLVING LEVEL {self.state.current_level}")
@@ -50,7 +80,7 @@ class Controller:
             self.state.add_observation(output)
             self.state.increment_step()
 
-            # Password found
+            # Direct password found
             match = PASSWORD_PATTERN.search(output)
             if match:
                 password = match.group(0)
@@ -58,13 +88,44 @@ class Controller:
                 self.state.save_password(self.state.current_level, password)
                 return password
 
+            # After find_files → automatically run check_file_type on the directory
+            if tool_name == "find_files":
+                parent_dir = self._get_parent_dir(output)
+                logger.info(f"📂 Auto-checking file types in: {parent_dir}")
+                check_tool = self.tools.get("check_file_type")
+                check_output = check_tool.run(parent_dir)
+                logger.info(f"File types:\n{check_output}")
+                self.state.add_action(f"check_file_type {parent_dir}")
+                self.state.add_observation(check_output)
+                self.state.increment_step()
+
+                ascii_path = self._extract_ascii_file(check_output)
+                if ascii_path:
+                    logger.info(f"📄 ASCII file found: {ascii_path} → reading")
+                    password = self._try_read_password(ascii_path)
+                    if password:
+                        logger.info(f"🎯 PASSWORD FOUND: {password}")
+                        self.state.save_password(self.state.current_level, password)
+                        return password
+
+            # After check_file_type → immediately read the ASCII file
+            if tool_name == "check_file_type":
+                ascii_path = self._extract_ascii_file(output)
+                if ascii_path:
+                    logger.info(f"📄 ASCII file found: {ascii_path} → reading")
+                    password = self._try_read_password(ascii_path)
+                    if password:
+                        logger.info(f"🎯 PASSWORD FOUND: {password}")
+                        self.state.save_password(self.state.current_level, password)
+                        return password
+
             # Anti-loop
-            recent_actions = self.state.actions[-3:]
-            if len(recent_actions) >= 3 and len(set(recent_actions)) == 1:
+            recent = self.state.actions[-3:]
+            if len(recent) >= 3 and len(set(recent)) == 1:
                 logger.warning("⚠️ Loop detected, stopping level")
                 return None
 
-        logger.warning("⚠️ Max steps reached for this level")
+        logger.warning("⚠️ Max steps reached")
         return None
 
     def run(self):
@@ -75,7 +136,6 @@ class Controller:
                 level = self.state.current_level
                 username = f"bandit{level}"
 
-                # Get password for this level
                 if level == 0:
                     password = settings.ssh_password
                 else:
@@ -84,7 +144,6 @@ class Controller:
                         logger.error(f"No password for level {level}, stopping")
                         break
 
-                # Connect as this level's user
                 self.ssh_client.connect(
                     host=settings.ssh_host,
                     port=settings.ssh_port,
@@ -92,7 +151,6 @@ class Controller:
                     password=password
                 )
 
-                # Solve this level
                 found_password = self.solve_level()
 
                 if found_password:
