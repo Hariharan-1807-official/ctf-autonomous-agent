@@ -7,7 +7,6 @@ from utils.logger import logger
 class LLMEngine:
     def __init__(self, tools):
         api_key = os.getenv("GROQ_API_KEY")
-
         if not api_key:
             raise ValueError("❌ GROQ_API_KEY not found")
 
@@ -15,15 +14,10 @@ class LLMEngine:
             api_key=api_key,
             base_url="https://api.groq.com/openai/v1"
         )
-
         self.tools = tools
 
     def decide(self, state, memory_context: str):
-        # ✅ Extract passwords (core Phase-4 feature)
         passwords = re.findall(r"[A-Za-z0-9]{32}", memory_context)
-        if passwords:
-            logger.info(f"🔑 Passwords found: {passwords[0]}")
-            return None, None  # Signal mission complete
 
         tools_list = "\n".join([
             f"{name}: {tool.description}"
@@ -31,41 +25,45 @@ class LLMEngine:
         ])
 
         prompt = f"""
-🎯 MISSION: Extract bandit0 password from home/bandit0/readme
+You are solving Bandit Level {state.current_level} on OverTheWire.
 
-CURRENT PATH: {state.cwd}
+CURRENT LEVEL: bandit{state.current_level}
+CURRENT DIRECTORY: {state.cwd}
 
-CRITICAL PATHS (relative from current dir):
-1. list_directory bandit0    (if in /home)
-2. read_file readme          (if in home/bandit0) 
-3. 32-char password → MISSION_COMPLETE
+DIRECTORY CONTENTS (initial scan):
+{state.observations[0] if state.observations else "Unknown"}
 
-FOUND PASSWORDS: {', '.join(passwords) if passwords else 'None'}
+RECENT ACTIONS AND RESULTS:
+{memory_context}
 
-RECENT OBSERVATIONS:
-{state.observations[-2:]}
+FOUND PASSWORDS SO FAR: {passwords if passwords else "None"}
 
-RULES:
-- Use RELATIVE PATHS from current directory
-- From /home → list_directory bandit0
-- From home/bandit0 → read_file readme
-- NEVER use absolute paths
+BANDIT-SPECIFIC KNOWLEDGE:
+- Level 0: password is in "readme"
+- Level 1: password is in file named "-" → use read_file with arg "-"
+- Level 2: password is in file with spaces → pass full filename including spaces
+- Level 3: password is in hidden file inside "inhere/" directory → use read_file inhere/...Hiding-From-You
+- Files named "-" are handled automatically with ./ prefix
+- If you see a file inside a subdirectory, pass the FULL PATH like: inhere/filename
 
-TOOLS:
+STRICT RULES:
+- After listing a directory and seeing a file → immediately read that file
+- Pass the FULL PATH to read_file including subdirectory e.g. inhere/...Hiding-From-You
+- If you already found a 32-char password → MISSION_COMPLETE
+- Do NOT repeat the same action twice
+
+AVAILABLE TOOLS:
 {tools_list}
 
-FORMAT:
-TOOL: list_directory
-ARGS: bandit0
+Respond in ONE format only:
 
-OR
-TOOL: read_file  
-ARGS: readme
+TOOL: tool_name
+ARGS: argument
 
-OR
+OR if password already found:
+
 MISSION_COMPLETE
 """
-
 
         try:
             response = self.client.chat.completions.create(
@@ -74,13 +72,12 @@ MISSION_COMPLETE
             )
 
             text = response.choices[0].message.content
+            logger.info(f"LLM: {text.strip()}")
 
-            # ✅ TERMINATION FIRST (IMPORTANT)
             if "MISSION_COMPLETE" in text.upper():
-                logger.info("🎯 MISSION COMPLETE DETECTED")
+                logger.info("🎯 MISSION COMPLETE (LLM signal)")
                 return None, None
 
-            # ✅ Robust parsing
             tool_match = re.search(r"TOOL:\s*(\w+)", text, re.IGNORECASE)
             arg_match = re.search(r"ARGS:\s*(.+)", text, re.IGNORECASE)
 
@@ -89,7 +86,6 @@ MISSION_COMPLETE
                 arg = arg_match.group(1).strip() if arg_match else "."
                 return tool, arg
 
-            # ✅ Fallback
             return "list_directory", "."
 
         except Exception as e:

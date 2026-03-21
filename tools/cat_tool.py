@@ -2,15 +2,17 @@ from tools.base_tool import BaseTool
 
 
 class ReadFileTool(BaseTool):
-
     name = "read_file"
-    description = "Read and display the contents of a file."
+    description = "Read file contents. Pass the full path if file is inside a subdirectory e.g. inhere/...Hiding-From-You"
 
     def __init__(self, runner):
         self.runner = runner
 
     def run(self, filename):
+        filename = filename.strip().strip('"').strip("'")
 
-        command = f"cat {filename}"
+        # Only prepend ./ if it's a plain filename with no path separator
+        if not filename.startswith("/") and not filename.startswith("./") and "/" not in filename:
+            filename = f"./{filename}"
 
-        return self.runner.run(command)
+        return self.runner.run(f'cat "{filename}"')
