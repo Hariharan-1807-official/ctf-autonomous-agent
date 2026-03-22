@@ -2,6 +2,7 @@ from tools.ls_tool import ListDirectoryTool
 from tools.cat_tool import ReadFileTool
 from tools.find_tool import FindFileTool
 from tools.file_type_tool import FileTypeTool
+from tools.find_by_size_tool import FindBySizeTool
 
 
 class ToolRegistry:
@@ -11,6 +12,7 @@ class ToolRegistry:
             "read_file": ReadFileTool(runner),
             "find_files": FindFileTool(runner),
             "check_file_type": FileTypeTool(runner),
+            "find_by_properties": FindBySizeTool(runner),
         }
 
     def get(self, name):

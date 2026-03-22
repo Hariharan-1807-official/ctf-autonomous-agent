@@ -4,7 +4,7 @@ from tools.tool_registry import ToolRegistry
 from reasoning.llm_engine import LLMEngine
 from utils.logger import logger
 
-PASSWORD_PATTERN = re.compile(r"[A-Za-z0-9]{32}")
+PASSWORD_PATTERN = re.compile(r"[A-Za-z0-9]{32,33}")
 
 
 class Controller:
@@ -16,9 +16,15 @@ class Controller:
 
     def _extract_ascii_file(self, file_type_output: str):
         for line in file_type_output.splitlines():
+            if "ASCII text" in line and "very long lines" not in line:
+                path = line.split(":")[0].strip()
+                if path and not path.startswith(" "):
+                    return path
+        for line in file_type_output.splitlines():
             if "ASCII text" in line:
                 path = line.split(":")[0].strip()
-                return path
+                if path and not path.startswith(" "):
+                    return path
         return None
 
     def _try_read_password(self, path: str):
@@ -91,7 +97,19 @@ class Controller:
             # After find_files → automatically run check_file_type on the directory
             if tool_name == "find_files":
                 parent_dir = self._get_parent_dir(output)
+                file_count=len([l for l in output.splitlines() if l.strip()])
                 logger.info(f"📂 Auto-checking file types in: {parent_dir}")
+                size_find_tool=self.tools.get("find_by_properties")
+                size_output=size_find_tool.run(f'inhere -size 1033c')
+                logger.info(f"Size-filtered find:\n{size_output}")
+                size_results=[l.strip() for l in size_output.splitlines() if l.strip()]
+                if(len(size_results)==1):
+                    logger.info(f" Exact size match: {size_results[0]} → reading")
+                    password=self._try_read_password(size_results[0])
+                    if password:
+                        logger.info(f"🎯 PASSWORD FOUND: {password}")
+                        self.state.save_password(self.state.current_level, password)
+                        return password
                 check_tool = self.tools.get("check_file_type")
                 check_output = check_tool.run(parent_dir)
                 logger.info(f"File types:\n{check_output}")
