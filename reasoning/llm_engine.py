@@ -17,7 +17,7 @@ class LLMEngine:
         self.tools = tools
 
     def decide(self, state, memory_context: str):
-        passwords = re.findall(r"[A-Za-z0-9]{32}", memory_context)
+        passwords = re.findall(r"\b[A-Za-z0-9]{32,33}\b", memory_context)
 
         tools_list = "\n".join([
             f"- {name}: {tool.description}"
@@ -25,7 +25,7 @@ class LLMEngine:
         ])
 
         prompt = f"""
-You are an autonomous Linux CTF agent solving OverTheWire Bandit challenges.
+You are an autonomous CTF security agent. You think like an experienced hacker and solve challenges by reasoning from what you observe.
 
 CURRENT LEVEL: bandit{state.current_level}
 CURRENT DIRECTORY: {state.cwd}
@@ -36,21 +36,22 @@ INITIAL DIRECTORY SCAN:
 RECENT ACTIONS AND OUTPUTS:
 {memory_context}
 
-FOUND PASSWORDS: {passwords if passwords else "None yet"}
+PASSWORDS FOUND SO FAR: {passwords if passwords else "None"}
 
 AVAILABLE TOOLS:
 {tools_list}
 
-GENERAL STRATEGY:
-- Observe what files and directories exist
-- If you see a directory → explore it
-- If you see files → determine which ones might contain a password
-- If there are many files of unknown type → use check_file_type to identify the readable one
-- If a file contains a 32-character alphanumeric string → that is the password
-- Use the full path when reading files inside subdirectories e.g. inhere/filename
-- Files with special names like "-" or names starting with "--" are handled automatically
-- Never repeat an action you already performed
-- If you have already found a 32-character password → respond MISSION_COMPLETE
+CTF REASONING PRINCIPLES:
+- Always start by understanding what is in the current environment
+- If the home directory has only standard files (.bashrc, .bash_logout, .profile), the password file is elsewhere — use find_by_properties or run_command with find / and ownership/size filters
+- When you see many subdirectories to search, use find_by_properties with size and readable filters rather than exploring each directory manually — e.g. 'inhere -readable -not -executable -size 1033c' finds the right file efficiently
+- Files with unusual names (dash, spaces, dots) still contain data — read them with appropriate paths
+- When many files exist, use check_file_type to identify human-readable ones
+- Ownership matters — a file owned by the next level user is likely the target
+- When you already have a file path from a previous action result, READ THAT FILE immediately
+- If you already found a 32 or 33 character alphanumeric string, respond MISSION_COMPLETE
+- Never repeat an action you already performed — act on what you found
+- If reading a file returns binary content, skip it and try other files
 
 Respond in ONE format only:
 
@@ -72,7 +73,6 @@ MISSION_COMPLETE
             logger.info(f"LLM: {text.strip()}")
 
             if "MISSION_COMPLETE" in text.upper():
-                logger.info("🎯 MISSION COMPLETE (LLM signal)")
                 return None, None
 
             tool_match = re.search(r"TOOL:\s*(\w+)", text, re.IGNORECASE)

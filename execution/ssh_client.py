@@ -25,7 +25,12 @@ class SSHClient:
 
     def execute(self, command: str) -> str:
         stdin, stdout, stderr = self.client.exec_command(command, timeout=10)
-        return stdout.read().decode() + stderr.read().decode()
+        output = stdout.read()
+        error= stderr.read()
+        try:
+            return output.decode("utf-8") + error.decode("utf-8")
+        except UnicodeDecodeError:
+            return "[binary file - not readable as text]"
 
     def close(self):
         if self.client:
